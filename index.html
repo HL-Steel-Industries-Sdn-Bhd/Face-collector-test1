@@ -32,18 +32,18 @@ canvas { position: absolute; top: 0; left: 0; z-index: 10; }
 <script>
 // 全局变量
 let modelsLoaded = false;
-let videoElement;
-let statusEl;
-let snapBtn;
-let outputEl;
+
+// DOM 元素引用
+const videoElement = document.getElementById('video');
+const statusEl = document.getElementById('status');
+const snapBtn = document.getElementById('snap');
+const outputEl = document.getElementById('output');
+
+// 设置按钮点击事件 - 使用函数引用
+snapBtn.onclick = captureFace;
 
 // 页面加载后执行
-window.onload = async () => {
-    videoElement = document.getElementById('video');
-    statusEl = document.getElementById('status');
-    snapBtn = document.getElementById('snap');
-    outputEl = document.getElementById('output');
-    
+window.addEventListener('load', async () => {
     try {
         // 检查 faceapi 是否已加载
         await checkFaceAPI();
@@ -66,7 +66,7 @@ window.onload = async () => {
         statusEl.textContent = '初始化失败: ' + error.message;
         statusEl.className = 'error';
     }
-};
+});
 
 // 检查 faceapi 是否加载
 function checkFaceAPI() {
@@ -152,8 +152,8 @@ async function loadModels() {
     }
 }
 
-// 拍照按钮事件
-snapBtn.onclick = async () => {
+// 拍照按钮事件处理函数
+async function captureFace() {
     if (!modelsLoaded) {
         alert('模型还未加载完成，请稍候...');
         return;
@@ -223,7 +223,7 @@ snapBtn.onclick = async () => {
     } finally {
         snapBtn.disabled = false;
     }
-};
+}
 
 // 显示检测框
 function displayDetection(detection) {
@@ -249,7 +249,9 @@ function displayDetection(detection) {
     
     // 3秒后移除canvas
     setTimeout(() => {
-        canvas.remove();
+        if (canvas.parentNode === container) {
+            canvas.remove();
+        }
     }, 3000);
 }
 
@@ -259,6 +261,14 @@ window.addEventListener('error', (e) => {
     if (statusEl) {
         statusEl.textContent = '发生错误: ' + e.message;
         statusEl.className = 'error';
+    }
+});
+
+// 添加页面卸载时的清理
+window.addEventListener('beforeunload', () => {
+    if (videoElement.srcObject) {
+        const tracks = videoElement.srcObject.getTracks();
+        tracks.forEach(track => track.stop());
     }
 });
 </script>
