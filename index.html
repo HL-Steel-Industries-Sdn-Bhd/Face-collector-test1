@@ -19,14 +19,14 @@ canvas { position: absolute; top: 0; left: 0; z-index: 10; }
 </head>
 <body>
 
-<h2>人脸注册（生成 embedding）</h2>
+<h2>Face Recognition</h2>
 <div class="video-container">
     <video id="video" width="640" height="480" autoplay muted></video>
 </div><br>
 <div id="status" class="loading">正在加载 face-api.js 库...</div>
-<button id="snap" disabled>拍照并生成 Embedding</button>
+<button id="snap" disabled> Generate Embedding</button>
 
-<h3>Embedding JSON（复制贴到签到页）</h3>
+<h3>Embedding Copy </h3>
 <textarea id="output" readonly></textarea>
 
 <script>
@@ -56,7 +56,7 @@ window.addEventListener('load', async () => {
         
         modelsLoaded = true;
         snapBtn.disabled = false;
-        statusEl.textContent = '✓ 准备就绪！可以拍照了';
+        statusEl.textContent = '✓ Ready to take photo';
         statusEl.className = 'success';
         
         console.log('初始化完成，modelsLoaded:', modelsLoaded);
