@@ -20,9 +20,11 @@ body { font-family: Arial; text-align: center; margin-top: 30px; }
 
 <script>
 async function loadModels() {
-    await faceapi.nets.tinyFaceDetector.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights/");
-    await faceapi.nets.faceRecognitionNet.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights/");
-    await faceapi.nets.faceLandmark68Net.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights/");
+    const MODEL_URL = "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights";
+
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
 }
 loadModels();
 
@@ -38,7 +40,7 @@ document.getElementById("snap").onclick = async () => {
         .withFaceDescriptor();
 
     if (!detection) {
-        alert("没有检测到脸，请重试");
+        alert("没有检测到脸，请重试（请光线亮一点）");
         return;
     }
 
