@@ -13,12 +13,16 @@ body { font-family: Arial; text-align: center; margin-top: 30px; }
 .loading { color: blue; }
 .success { color: green; }
 .error { color: red; }
+canvas { position: absolute; top: 0; left: 0; z-index: 10; }
+.video-container { position: relative; display: inline-block; }
 </style>
 </head>
 <body>
 
 <h2>人脸注册（生成 embedding）</h2>
-<video id="video" autoplay muted></video><br>
+<div class="video-container">
+    <video id="video" width="640" height="480" autoplay muted></video>
+</div><br>
 <div id="status" class="loading">正在加载 face-api.js 库...</div>
 <button id="snap" disabled>拍照并生成 Embedding</button>
 
@@ -26,35 +30,23 @@ body { font-family: Arial; text-align: center; margin-top: 30px; }
 <textarea id="output" readonly></textarea>
 
 <script>
-// 等待 face-api.js 加载完成
+// 全局变量
+let modelsLoaded = false;
+let videoElement;
+let statusEl;
+let snapBtn;
+let outputEl;
+
+// 页面加载后执行
 window.onload = async () => {
-    const statusEl = document.getElementById('status');
-    const snapBtn = document.getElementById('snap');
-    const outputEl = document.getElementById('output');
-    
-    // 检查 faceapi 是否已加载
-    function waitForFaceAPI() {
-        return new Promise((resolve, reject) => {
-            let attempts = 0;
-            const maxAttempts = 50; // 等待5秒
-            const interval = setInterval(() => {
-                attempts++;
-                if (window.faceapi) {
-                    clearInterval(interval);
-                    resolve();
-                } else if (attempts >= maxAttempts) {
-                    clearInterval(interval);
-                    reject(new Error('face-api.js 加载超时'));
-                }
-            }, 100);
-        });
-    }
+    videoElement = document.getElementById('video');
+    statusEl = document.getElementById('status');
+    snapBtn = document.getElementById('snap');
+    outputEl = document.getElementById('output');
     
     try {
-        // 等待 faceapi 可用
-        await waitForFaceAPI();
-        statusEl.textContent = 'face-api.js 加载成功，正在初始化...';
-        statusEl.className = 'loading';
+        // 检查 faceapi 是否已加载
+        await checkFaceAPI();
         
         // 启动摄像头
         await startCamera();
@@ -62,9 +54,12 @@ window.onload = async () => {
         // 加载模型
         await loadModels();
         
+        modelsLoaded = true;
         snapBtn.disabled = false;
-        statusEl.textContent = '准备就绪！可以拍照了';
+        statusEl.textContent = '✓ 准备就绪！可以拍照了';
         statusEl.className = 'success';
+        
+        console.log('初始化完成，modelsLoaded:', modelsLoaded);
         
     } catch (error) {
         console.error('初始化失败:', error);
@@ -73,11 +68,36 @@ window.onload = async () => {
     }
 };
 
+// 检查 faceapi 是否加载
+function checkFaceAPI() {
+    return new Promise((resolve, reject) => {
+        if (window.faceapi) {
+            console.log('faceapi 已加载:', faceapi);
+            resolve();
+            return;
+        }
+        
+        let attempts = 0;
+        const maxAttempts = 30;
+        const interval = setInterval(() => {
+            attempts++;
+            if (window.faceapi) {
+                clearInterval(interval);
+                console.log('faceapi 加载成功');
+                resolve();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                reject(new Error('face-api.js 加载超时'));
+            }
+        }, 100);
+    });
+}
+
 // 启动摄像头
 async function startCamera() {
     try {
-        const statusEl = document.getElementById('status');
         statusEl.textContent = '正在请求摄像头权限...';
+        statusEl.className = 'loading';
         
         const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
@@ -87,36 +107,42 @@ async function startCamera() {
             } 
         });
         
-        const video = document.getElementById("video");
-        video.srcObject = stream;
+        videoElement.srcObject = stream;
         
         return new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                video.play();
+            videoElement.onloadedmetadata = () => {
+                videoElement.play();
+                console.log('摄像头启动，视频尺寸:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+                statusEl.textContent = '摄像头已就绪';
                 resolve();
             };
         });
     } catch (error) {
         console.error('摄像头错误:', error);
-        throw error;
+        throw new Error('无法访问摄像头: ' + error.message);
     }
 }
 
 // 加载模型
 async function loadModels() {
-    const statusEl = document.getElementById('status');
-    
     try {
         statusEl.textContent = '正在加载人脸检测模型...';
         statusEl.className = 'loading';
         
-        // 使用正确的模型路径 - 这是 face-api.js 官方托管的模型
+        // 使用正确的模型路径
         const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+        
+        console.log('开始加载模型...');
         
         // 加载所需模型
         await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        console.log('tinyFaceDetector 加载完成');
+        
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        console.log('faceLandmark68Net 加载完成');
+        
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        console.log('faceRecognitionNet 加载完成');
         
         console.log('所有模型加载成功');
         
@@ -127,42 +153,67 @@ async function loadModels() {
 }
 
 // 拍照按钮事件
-document.getElementById('snap').onclick = async () => {
-    const statusEl = document.getElementById('status');
-    const snapBtn = document.getElementById('snap');
-    const outputEl = document.getElementById('output');
-    const video = document.getElementById("video");
+snapBtn.onclick = async () => {
+    if (!modelsLoaded) {
+        alert('模型还未加载完成，请稍候...');
+        return;
+    }
     
     try {
         statusEl.textContent = '正在检测人脸...';
         statusEl.className = 'loading';
         snapBtn.disabled = true;
         
-        // 检测人脸
+        console.log('开始人脸检测...');
+        console.log('video readyState:', videoElement.readyState);
+        console.log('video尺寸:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+        
+        // 确保视频已就绪
+        if (videoElement.readyState < 2) {
+            throw new Error('视频未就绪，请等待摄像头初始化');
+        }
+        
+        // 修正：正确实例化 TinyFaceDetectorOptions
+        const options = new faceapi.TinyFaceDetectorOptions({
+            inputSize: 320,
+            scoreThreshold: 0.5
+        });
+        
+        console.log('使用检测选项:', options);
+        
+        // 检测人脸 - 使用正确的语法
         const detection = await faceapi
-            .detectSingleFace(video, faceapi.TinyFaceDetectorOptions)
+            .detectSingleFace(videoElement, options)
             .withFaceLandmarks()
             .withFaceDescriptor();
 
+        console.log('检测结果:', detection);
+        
         if (!detection) {
             throw new Error('未检测到人脸');
         }
         
+        console.log('检测到人脸，分数:', detection.detection.score);
+        
         // 获取 embedding
         const emb = Array.from(detection.descriptor);
+        console.log('embedding长度:', emb.length);
         
         // 显示结果
         outputEl.value = JSON.stringify({
             name: "TEST_USER",
             timestamp: new Date().toISOString(),
+            embedding_size: emb.length,
             embedding: emb
         }, null, 2);
         
         statusEl.textContent = '✓ Embedding 生成成功！';
         statusEl.className = 'success';
         
-        // 绘制检测结果（可选）
-        displayDetection(video, detection);
+        // 绘制检测结果
+        displayDetection(detection);
+        
+        alert("✓ Embedding 已生成！\n已检测到人脸，embedding 长度为 " + emb.length);
         
     } catch (error) {
         console.error('检测错误:', error);
@@ -174,29 +225,42 @@ document.getElementById('snap').onclick = async () => {
     }
 };
 
-// 可选：显示检测框
-function displayDetection(video, detection) {
+// 显示检测框
+function displayDetection(detection) {
     // 移除之前的canvas
     const oldCanvas = document.querySelector('canvas');
     if (oldCanvas) oldCanvas.remove();
     
-    const canvas = faceapi.createCanvasFromMedia(video);
-    canvas.style.position = 'absolute';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.zIndex = '10';
+    // 创建canvas
+    const canvas = faceapi.createCanvasFromMedia(videoElement);
+    const container = document.querySelector('.video-container');
+    container.appendChild(canvas);
     
-    const videoContainer = video.parentNode;
-    videoContainer.style.position = 'relative';
-    videoContainer.appendChild(canvas);
-    
-    const displaySize = { width: video.width, height: video.height };
+    // 匹配尺寸
+    const displaySize = { width: videoElement.width, height: videoElement.height };
     faceapi.matchDimensions(canvas, displaySize);
     
+    // 调整检测结果尺寸
     const resizedDetection = faceapi.resizeResults(detection, displaySize);
+    
+    // 绘制
     faceapi.draw.drawDetections(canvas, [resizedDetection]);
     faceapi.draw.drawFaceLandmarks(canvas, [resizedDetection]);
+    
+    // 3秒后移除canvas
+    setTimeout(() => {
+        canvas.remove();
+    }, 3000);
 }
+
+// 添加错误监听
+window.addEventListener('error', (e) => {
+    console.error('全局错误:', e.error);
+    if (statusEl) {
+        statusEl.textContent = '发生错误: ' + e.message;
+        statusEl.className = 'error';
+    }
+});
 </script>
 
 </body>
