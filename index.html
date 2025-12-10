@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Face Register</title>
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<style>
+body { font-family: Arial; text-align: center; margin-top: 30px; }
+#video { width: 300px; border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<h2>人脸注册（生成 embedding）</h2>
+<video id="video" autoplay muted></video><br><br>
+<button id="snap">拍照并生成 Embedding</button>
+
+<h3>Embedding JSON（复制贴到签到页）</h3>
+<textarea id="output" style="width:90%;height:200px;"></textarea>
+
+<script>
+async function loadModels() {
+    await faceapi.nets.tinyFaceDetector.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights/");
+    await faceapi.nets.faceRecognitionNet.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights/");
+    await faceapi.nets.faceLandmark68Net.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights/");
+}
+loadModels();
+
+navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+    document.getElementById("video").srcObject = stream;
+});
+
+document.getElementById("snap").onclick = async () => {
+    const video = document.getElementById("video");
+    const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+    if (!detection) {
+        alert("没有检测到脸，请重试");
+        return;
+    }
+
+    const emb = Array.from(detection.descriptor);
+    document.getElementById("output").value = JSON.stringify({
+        name: "TEST_USER",
+        embedding: emb
+    }, null, 2);
+
+    alert("Embedding 已生成！");
+};
+</script>
+
+</body>
+</html>
