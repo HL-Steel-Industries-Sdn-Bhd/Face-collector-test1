@@ -7,51 +7,161 @@
 <style>
 body { font-family: Arial; text-align: center; margin-top: 30px; }
 #video { width: 300px; border-radius: 10px; }
+#output { width: 90%; height: 200px; margin: 10px 0; }
+#status { color: #666; margin: 10px 0; }
 </style>
 </head>
 <body>
 
 <h2>人脸注册（生成 embedding）</h2>
-<video id="video" autoplay muted></video><br><br>
-<button id="snap">拍照并生成 Embedding</button>
+<video id="video" autoplay muted></video><br>
+<div id="status">初始化中...</div>
+<button id="snap" disabled>拍照并生成 Embedding</button>
 
 <h3>Embedding JSON（复制贴到签到页）</h3>
-<textarea id="output" style="width:90%;height:200px;"></textarea>
+<textarea id="output" readonly></textarea>
 
 <script>
+let modelsLoaded = false;
+const statusEl = document.getElementById('status');
+const snapBtn = document.getElementById('snap');
+const outputEl = document.getElementById('output');
+
 async function loadModels() {
-    const MODEL_URL = "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights";
-
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    try {
+        statusEl.textContent = '正在加载人脸检测模型...';
+        statusEl.style.color = 'blue';
+        
+        // 使用正确的模型路径
+        // 注意：face-api.js 的模型需要放在同一域名下或支持 CORS
+        // 这里使用一个可用的公共CDN
+        const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+        
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        
+        modelsLoaded = true;
+        snapBtn.disabled = false;
+        statusEl.textContent = '模型加载完成！可以拍照了';
+        statusEl.style.color = 'green';
+        
+        console.log('所有模型加载成功');
+    } catch (error) {
+        console.error('模型加载失败:', error);
+        statusEl.textContent = '模型加载失败，请检查控制台错误信息';
+        statusEl.style.color = 'red';
+        snapBtn.disabled = true;
+    }
 }
-loadModels();
 
-navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-    document.getElementById("video").srcObject = stream;
-});
+// 启动摄像头
+async function startCamera() {
+    try {
+        statusEl.textContent = '正在请求摄像头权限...';
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: 640, 
+                height: 480,
+                facingMode: "user" 
+            } 
+        });
+        const video = document.getElementById("video");
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+            statusEl.textContent = '摄像头已就绪，正在加载模型...';
+            video.play();
+        };
+    } catch (error) {
+        console.error('摄像头错误:', error);
+        statusEl.textContent = '无法访问摄像头: ' + error.message;
+        statusEl.style.color = 'red';
+    }
+}
 
-document.getElementById("snap").onclick = async () => {
-    const video = document.getElementById("video");
-    const detection = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+// 页面加载后执行
+window.onload = async () => {
+    // 先启动摄像头
+    await startCamera();
+    
+    // 加载模型
+    await loadModels();
+};
 
-    if (!detection) {
-        alert("没有检测到脸，请重试（请光线亮一点）");
+// 拍照按钮事件
+snapBtn.onclick = async () => {
+    if (!modelsLoaded) {
+        alert('模型还未加载完成，请稍候...');
         return;
     }
+    
+    const video = document.getElementById("video");
+    
+    try {
+        statusEl.textContent = '正在检测人脸...';
+        statusEl.style.color = 'blue';
+        snapBtn.disabled = true;
+        
+        // 确保视频已播放
+        if (video.paused || video.ended) {
+            alert('视频未就绪，请刷新页面重试');
+            return;
+        }
+        
+        // 检测人脸
+        const detection = await faceapi
+            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 320,  // 提高检测精度
+                scoreThreshold: 0.5
+            }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
 
-    const emb = Array.from(detection.descriptor);
-    document.getElementById("output").value = JSON.stringify({
-        name: "TEST_USER",
-        embedding: emb
-    }, null, 2);
-
-    alert("Embedding 已生成！");
+        if (!detection) {
+            statusEl.textContent = '未检测到人脸，请调整位置和光线';
+            statusEl.style.color = 'orange';
+            snapBtn.disabled = false;
+            alert("没有检测到脸，请确保：\n1. 光线充足\n2. 面部清晰可见\n3. 背景不要太复杂");
+            return;
+        }
+        
+        // 获取 embedding
+        const emb = Array.from(detection.descriptor);
+        
+        // 显示结果
+        outputEl.value = JSON.stringify({
+            name: "TEST_USER",
+            timestamp: new Date().toISOString(),
+            embedding: emb
+        }, null, 2);
+        
+        statusEl.textContent = 'Embedding 生成成功！';
+        statusEl.style.color = 'green';
+        
+        // 在画布上显示检测框（可选）
+        const canvas = faceapi.createCanvasFromMedia(video);
+        document.body.append(canvas);
+        faceapi.matchDimensions(canvas, video);
+        faceapi.draw.drawDetections(canvas, [detection]);
+        faceapi.draw.drawFaceLandmarks(canvas, [detection]);
+        
+        alert("✓ Embedding 已生成！请复制下方文本框中的内容");
+        
+    } catch (error) {
+        console.error('检测错误:', error);
+        statusEl.textContent = '检测失败: ' + error.message;
+        statusEl.style.color = 'red';
+    } finally {
+        snapBtn.disabled = false;
+    }
 };
+
+// 错误处理
+window.addEventListener('error', (e) => {
+    console.error('全局错误:', e.error);
+    statusEl.textContent = '发生错误: ' + e.message;
+    statusEl.style.color = 'red';
+});
 </script>
 
 </body>
